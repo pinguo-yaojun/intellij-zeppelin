@@ -13,6 +13,7 @@ import com.intellij.openapi.vfs.VirtualFile
 sealed trait SelectionMode
 object SelectedText extends SelectionMode
 object SingleLine extends SelectionMode
+object MultipleLines extends SelectionMode
 
 case class CodeFragment(selectionMode: SelectionMode, content:String)
 
@@ -64,9 +65,36 @@ trait IdeaDocumentApi {
     previousParagraphMarkerLine
   }
 
-  def currentCodeFragment(editor: Editor): CodeFragment = {
+  def findNextLineMatching(editor: Editor, currentLine: Int, lineMatching:String => Boolean): Option[Int] = {
+    val startLine = if(currentLine > 0) currentLine else editor.getCaretModel.getLogicalPosition.line
+    val totalLine = editor.getDocument.getLineCount
+    val nextMatchingLine: Option[Int] = Range(startLine, totalLine, 1).map { line =>
+      val start = editor.getDocument.getLineStartOffset(line)
+      val end = editor.getDocument.getLineEndOffset(line)
+
+      (line, editor.getDocument.getCharsSequence.subSequence(start, end).toString)
+    }.collectFirst {
+      case (line, text) if lineMatching(text) => line
+    }
+
+    nextMatchingLine
+  }
+
+  def currentCodeFragment(editor: Editor, startLine:Int = 0, endLine: Int = 0): CodeFragment = {
     val text = currentSelectedText(editor)
-    if (text.isEmpty) CodeFragment(SingleLine, currentLineText(editor)) else CodeFragment(SelectedText, text)
+    if (text.isEmpty) {
+      if(startLine > 0 && endLine > 0) {
+        CodeFragment(MultipleLines, editor.getDocument.getCharsSequence.subSequence(
+          editor.getDocument.getLineStartOffset(startLine),
+          editor.getDocument.getLineEndOffset(endLine)
+        ).toString)
+      }
+      else {
+        CodeFragment(SingleLine, currentLineText(editor))
+      }
+    } else {
+      CodeFragment(SelectedText, text)
+    }
   }
 
   def currentLineText(editor: Editor):String = {
@@ -85,15 +113,17 @@ trait IdeaDocumentApi {
 
   def insertAfterFragment(editor: Editor, fragment:CodeFragment, text: String): Unit = {
     editor.getDocument.insertString(lineStartOffsetAfter(editor, fragment), text)
+    val lineStartOffset = editor.getDocument.getLineStartOffset(lineStartOffsetAfter(editor, fragment) + 1)
+    editor.getCaretModel.moveToOffset(lineStartOffset + text.length)
   }
 
   private def lineStartOffsetAfter(editor: Editor, fragment: CodeFragment): Int = {
     fragment.selectionMode match {
       case SelectedText =>
-        val currentLine = editor.getSelectionModel.getSelectionEndPosition.line
+        val currentLine = Math.max(editor.getSelectionModel.getSelectionStartPosition.getLine, editor.getSelectionModel.getSelectionEndPosition.getLine)
         editor.getDocument.getLineEndOffset(currentLine)
-      case SingleLine =>
-        val currentLine = editor.getCaretModel.getLogicalPosition.line
+      case _ =>
+        val currentLine = editor.getCaretModel.getLogicalPosition.line - 1
         editor.getDocument.getLineEndOffset(currentLine)
     }
   }
@@ -101,7 +131,7 @@ trait IdeaDocumentApi {
   def insertBeforeFragment(editor: Editor, fragment: CodeFragment, text: String): Unit = {
     val lineStartOffset = fragment.selectionMode match {
       case SelectedText => editor.getDocument.getLineStartOffset(editor.getSelectionModel.getSelectionStartPosition.line)
-      case SingleLine => editor.getDocument.getLineStartOffset(editor.getCaretModel.getLogicalPosition.line)
+      case _ => editor.getDocument.getLineStartOffset(editor.getCaretModel.getLogicalPosition.line)
     }
     editor.getDocument.insertString(lineStartOffset, text)
   }

@@ -22,7 +22,7 @@ class ZeppelinConnection(val project:Project) extends ProjectComponent{
 
   def promptForZeppelinHost():ZeppelinApi = {
     hostUrl = Messages.showInputDialog(
-      "Please, enter your Zeppelin Notebook",
+      "Please, enter your Zeppelin Host URL",
       "Zeppelin Notebook",
       null,
       hostUrl,
@@ -44,6 +44,6 @@ class ZeppelinConnection(val project:Project) extends ProjectComponent{
 }
 
 object ZeppelinConnection{
-  val DefaultZeppelinHost = "http://localhost:8080"
+  val DefaultZeppelinHost = "http://ip-10-0-144-43.ec2.internal:8890"
   def connectionFor(project: Project): ZeppelinConnection = project.getComponent(classOf[ZeppelinConnection])
 }

@@ -38,6 +38,49 @@ abstract class ZeppelinAction extends AnAction with IdeaDocumentApi {
     linesInReverse.flatMap(Notebook.parse).headOption
   }
 
+  protected def updateNotebookMarker(editor: Editor, notebook: Notebook): Unit = {
+    findPreviousLineMatching(editor, text => Notebook.parse(text).isDefined).foreach { line =>
+      replaceLine(editor, line, notebook.markerText)
+    }
+  }
+
+  def insertBefore(editor: Editor, notebook: Notebook, url:String): Unit = {
+    val offset = editor.getCaretModel.getOffset
+    val currentLine = editor.getCaretModel.getLogicalPosition.line
+    val lineStartOffset = editor.getDocument.getLineStartOffset(currentLine)
+
+    val message = notebook.notebookHeader(url)
+    editor.getDocument.insertString(lineStartOffset, message)
+    editor.getCaretModel.moveToOffset(offset + message.length)
+  }
+
+  def replaceParagraph(editor: Editor, startLine: Int, endLine: Int, paragraph: Paragraph): Unit = {
+    val message = paragraph.markerText
+    editor.getDocument.replaceString(
+      editor.getDocument.getLineStartOffset(startLine),
+      editor.getDocument.getLineEndOffset(endLine),
+      message)
+  }
+
+  def replaceOutput(editor: Editor, line: Int, withText: String): Unit = {
+    val existOutput = editor.getDocument.getCharsSequence.subSequence(
+      editor.getDocument.getLineStartOffset(line + 1),
+      editor.getDocument.getLineEndOffset(line + 1)
+    ).toString.equals("Output:")
+
+    if(existOutput) {
+      val start_line = line - 1
+      val end_line = findNextLineMatching(editor, 0, text => text.replaceAll("\n", "") == "*/").getOrElse(-1)
+      editor.getDocument.replaceString(
+        editor.getDocument.getLineStartOffset(start_line),
+        editor.getDocument.getLineEndOffset(end_line),
+        withText
+      )
+
+    }
+    else replaceLine(editor, line - 1, withText)
+  }
+
   protected def runWriteAction(anActionEvent: AnActionEvent)(f: Document => Unit): Unit = ApplicationManager.getApplication.runWriteAction{
     val document = currentDocument(currentFileIn(anActionEvent.getProject))
     new Computable[Unit] {

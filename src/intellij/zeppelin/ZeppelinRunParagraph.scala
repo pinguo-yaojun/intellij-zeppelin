@@ -8,23 +8,31 @@ class ZeppelinRunParagraph extends ZeppelinAction {
   override def actionPerformed(anActionEvent: AnActionEvent): Unit = {
     val editor = currentEditor(anActionEvent)
     val api = zeppelin(anActionEvent)
-    for {
-      note <- findNotebook(editor)
-      paragraph <- findParagraph(editor)
-    } yield {
+    findNotebook(editor) map { notebook =>
+      val paragraph_start_line = findPreviousLineMatching(editor, text => text.matches(Paragraph.ParagraphFlag.regex)).getOrElse(-1)
+      val paragraph_start_flag = editor.getDocument.getCharsSequence.subSequence(
+        editor.getDocument.getLineStartOffset(paragraph_start_line),
+        editor.getDocument.getLineEndOffset(paragraph_start_line)
+      ).toString
+      val paragraph_end_line = findNextLineMatching(editor, paragraph_start_line + 1, text => text == Paragraph.paragraphFooter).getOrElse(-1)
 
-      val codeFragment = currentCodeFragment(editor)
+      val codeFragment = currentCodeFragment(editor, paragraph_start_line, paragraph_end_line - 1)
+      api.getParagraphByFlag(notebook, paragraph_start_flag) map { paragraph =>
+        api.deleteParagraph(notebook, paragraph) map { _ =>
+          api.createParagraph(notebook, codeFragment.content, Some(paragraph.index)) map { newParagraph =>
+            runWriteAction(anActionEvent) { _ =>
+              replaceParagraph(editor, paragraph_start_line, paragraph_end_line, newParagraph)
+            }
 
-      (for {
-          newParagraph <- api.updateParagraph(note, paragraph, codeFragment.content)
-          result <- api.runParagraph(note, newParagraph)
-        } yield {
-          runWriteAction(anActionEvent) { _ =>
-            insertAfterFragment(editor, codeFragment, result.markerText)
+            api.runParagraph(notebook, newParagraph) map { result =>
+              runWriteAction(anActionEvent) { _ =>
+                replaceOutput(editor, paragraph_end_line + 2, result.markerText)
+              }
+            }
           }
-        }).recover { case t: Throwable => show(t.toString) }
-      }.getOrElse(show("No Zeppelin //Notebook: marker found."))
-
+        }
+      }
+    }
   }
 }
 

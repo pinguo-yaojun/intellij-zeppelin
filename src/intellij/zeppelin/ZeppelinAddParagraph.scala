@@ -11,33 +11,23 @@ class ZeppelinAddParagraph extends ZeppelinAction {
 
     val editor = currentEditor(anActionEvent)
     val api = zeppelin(anActionEvent)
-    findNotebook(editor)
-      .map { notebook =>
-        val codeFragment = currentCodeFragment(editor)
-        (for {
-          paragraph <- api.createParagraph(notebook, codeFragment.content)
-          _ <- Try(runWriteAction(anActionEvent){ _ =>
+    findNotebook(editor) map { notebook =>
+      val codeFragment = currentCodeFragment(editor)
+      api.createParagraph(notebook, codeFragment.content.replaceAll("\n\\s+", "\n"), Some(notebook.size)) map { paragraph =>
+        runWriteAction(anActionEvent) { _ =>
+          updateNotebookMarker(editor, notebook.copy(size = notebook.size + 1))
+          insertAfterFragment(editor, codeFragment,  "\n" + Paragraph.paragraphFooter + "\n")
+        }
 
-            updateNotebookMarker(editor, notebook.copy(size = notebook.size+1))
-            insertBeforeFragment(editor, codeFragment, paragraph.markerText + "\n")
-          })
-          result <- api.runParagraph(notebook, paragraph)
-        } yield {
+        api.runParagraph(notebook, paragraph) map { result =>
+          val paragraph_end_line = findNextLineMatching(editor, 0, text => text == Paragraph.paragraphFooter).getOrElse(-1)
           runWriteAction(anActionEvent) { _ =>
-            insertAfterFragment(editor, codeFragment, result.markerText)
+            replaceOutput(editor, paragraph_end_line + 1, result.markerText)
           }
-        }).recover { case t: Throwable => show(t.toString) }
-      }.getOrElse(show("No Zeppelin NoteId found."))
-
-  }
-
-  private def updateNotebookMarker(editor: Editor, notebook: Notebook): Unit = {
-    findPreviousLineMatching(editor, text => Notebook.parse(text).isDefined).foreach { line =>
-      replaceLine(editor, line, notebook.markerText)
+        }
+      }
     }
   }
-
-
 }
 
 

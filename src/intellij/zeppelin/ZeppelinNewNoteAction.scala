@@ -19,18 +19,6 @@ class ZeppelinNewNoteAction extends ZeppelinAction {
 
     } recover { case t: Throwable => show(t.toString) }
   }
-
-
-  def insertBefore(editor: Editor, notebook: Notebook, url:String): Unit = {
-    val offset = editor.getCaretModel.getOffset
-    val currentLine = editor.getCaretModel.getLogicalPosition.line
-    val lineStartOffset = editor.getDocument.getLineStartOffset(currentLine)
-
-    val message = notebook.notebookHeader(url)
-    editor.getDocument.insertString(lineStartOffset, message)
-    editor.getCaretModel.moveToOffset(offset + message.length)
-  }
-
 }
 
 
